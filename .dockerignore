@@ -1,0 +1,12 @@
+**/node_modules
+*/build/
+**/.git
+**/.gitignore
+**/.dockerignore
+**/docker-compose*
+**/Dockerfile*
+**/.vs
+**/.vscode
+.editorconfig
+*/README.mdx
+*/README.md

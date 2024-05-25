@@ -1,0 +1,66 @@
+image: docker:19
+
+services:
+  - docker:dind
+
+cache:
+  paths:
+    - node_modules/
+
+stages:
+  - test
+  - build
+  - deploy
+
+.tests:
+  stage: test
+  image: node
+
+linting:
+  extends: .tests
+  allow_failure: true
+  script:
+    - npm install --silent
+    - npm run lint
+
+docker-build:
+  stage: build
+  only:
+    - develop
+  before_script:
+    - docker version
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker pull $CI_REGISTRY_IMAGE:latest || true
+    - docker build --cache-from $CI_REGISTRY_IMAGE:latest --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA --tag $CI_REGISTRY_IMAGE:latest .
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE:latest
+
+
+deploy:
+  stage: deploy
+  variables:
+    GIT_STRATEGY: none
+  only:
+    - develop
+  before_script:
+    - apk update && apk add openssh-client bash
+  script:
+    - eval $(ssh-agent -s)
+
+    - bash -c 'ssh-add <(echo "$SSH_PRIVATE_KEY")'
+    
+    - mkdir -p ~/.ssh
+    
+    - ssh-keyscan -H $SSH_SERVER_IP >> ~/.ssh/known_hosts
+    
+    - chmod 644 ~/.ssh/known_hosts
+    
+    - >
+      ssh $SSH_USER@$SSH_SERVER_IP
+      "docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY};
+      cd ${PATH_TO_PROJECT};
+      docker compose down;
+      docker pull ${CI_REGISTRY_IMAGE}:latest;
+      docker compose up -d;
+      docker image prune -f;"
